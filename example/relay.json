@@ -1,0 +1,9 @@
+{
+    "mode": "relay",
+    "listen_addr": "0.0.0.0:9001",
+    "remote_addr": "127.0.0.1:9002",
+    "relay_type": {
+        "listen_type": "both",
+        "forward_type": "both"
+    }
+}
