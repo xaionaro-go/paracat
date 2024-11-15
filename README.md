@@ -1,4 +1,4 @@
-# ParaCat: A SIMO/MISO forwarder for high reliability/throughput
+# ParaCat: A multipath UDP forwarder for high reliability/throughput
 
 In crowded Internet, all connections are not reliable. To minimize jitter and packet loss, we can send it through different routes simultaneously then get redundancy.
 
@@ -35,3 +35,4 @@ flowchart LR
 - [ ] Optimize delay
 - [ ] Re-connect after EOF
 - [ ] Round-robin mode
+- [ ] Congestion control algorithm
