@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/packet"
 )
 
@@ -49,7 +50,7 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 			return
 		}
 
-		packetID := packet.NewPacketID(&server.idIncrement)
+		packetID := channel.NewPacketID(&server.idIncrement)
 		newPacket := &packet.Packet{
 			Buffer:   buf[:n],
 			ConnID:   connID,

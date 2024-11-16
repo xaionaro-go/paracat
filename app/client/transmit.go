@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/packet"
 )
 
@@ -24,7 +25,7 @@ func (client *Client) handleForward() {
 			client.connMutex.Unlock()
 			log.Println("new connection from:", addr.String())
 		}
-		packetID := packet.NewPacketID(&client.idIncrement)
+		packetID := channel.NewPacketID(&client.idIncrement)
 
 		newPacket := &packet.Packet{
 			Buffer:   buf[:n],

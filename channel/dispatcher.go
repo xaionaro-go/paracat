@@ -4,6 +4,7 @@ package channel
 import (
 	"errors"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/chenx-dust/paracat/config"
@@ -21,6 +22,10 @@ type Dispatcher struct {
 }
 
 func NewDispatcher(mode config.DispatchType) *Dispatcher {
+	if mode == config.NotDefinedDispatchType {
+		log.Fatal("dispatcher mode not defined")
+	}
+	log.Println("new dispatcher with mode:", config.DispatchTypeToString(mode))
 	return &Dispatcher{
 		outConns:      make([]io.Writer, 0),
 		roundRobinIdx: 0,
@@ -57,14 +62,14 @@ func (d *Dispatcher) Dispatch(data []byte) {
 		d.StatisticIn.CountPacket(uint32(len(data)))
 		d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outConns)
 		n, err := d.outConns[d.roundRobinIdx].Write(data)
-		if err != nil {
+		if err == nil {
 			d.StatisticOut.CountPacket(uint32(n))
 		}
 	case config.ConcurrentDispatchType:
 		d.StatisticIn.CountPacket(uint32(len(data)))
 		for _, outConn := range d.outConns {
 			n, err := outConn.Write(data)
-			if err != nil {
+			if err == nil {
 				d.StatisticOut.CountPacket(uint32(n))
 			}
 		}
