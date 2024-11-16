@@ -37,8 +37,6 @@ func (server *Server) handleTCPConn(conn *net.TCPConn) error {
 			continue
 		}
 
-		go func() {
-			server.forward(buf[:n], connID)
-		}()
+		go server.sendForward(buf[:n], connID)
 	}
 }

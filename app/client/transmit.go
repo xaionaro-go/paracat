@@ -53,3 +53,21 @@ func (client *Client) handleForward() {
 		}()
 	}
 }
+
+func (client *Client) sendReverse(buf []byte, length int, connID uint16) {
+	client.connMutex.RLock()
+	udpAddr, ok := client.connIDAddrMap[connID]
+	client.connMutex.RUnlock()
+	if !ok {
+		log.Println("conn not found")
+		return
+	}
+	n, err := client.udpListener.WriteToUDP(buf[:length], udpAddr)
+	if err != nil {
+		log.Println("error writing to udp:", err)
+	}
+	if n != length {
+		log.Println("error writing to udp: wrote", n, "bytes instead of", length)
+	}
+	client.packetStat.ReverseSend.CountPacket(uint32(n))
+}

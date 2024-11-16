@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"log"
 	"net"
 	"sync"
@@ -50,10 +49,7 @@ func (client *Client) Run() error {
 	}
 	log.Println("listening on", client.cfg.ListenAddr)
 
-	err = client.initRelays()
-	if err != nil {
-		return err
-	}
+	client.initRelays()
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -89,22 +85,24 @@ func (client *Client) Run() error {
 	return nil
 }
 
-func (client *Client) initRelays() error {
+func (client *Client) initRelays() {
 	for _, relay := range client.cfg.RelayServers {
 		for i := 0; i < relay.Weight; i++ {
 			if relay.ConnType == config.NotDefinedConnectionType {
-				return errors.New("invalid connection type")
+				log.Fatalln("not defined connection type")
 			}
 			enableTCP := relay.ConnType&config.TCPConnectionType != 0
 			enableUDP := relay.ConnType&config.UDPConnectionType != 0
 			if enableTCP {
 				tcpAddr, err := net.ResolveTCPAddr("tcp", relay.Address)
 				if err != nil {
-					return err
+					log.Println("error resolving tcp addr:", err)
+					continue
 				}
 				conn, err := net.DialTCP("tcp", nil, tcpAddr)
 				if err != nil {
-					return err
+					log.Println("error dialing tcp:", err)
+					continue
 				}
 				client.tcpRelays = append(client.tcpRelays, conn)
 				log.Println("connected to tcp relay", relay.Address)
@@ -112,16 +110,17 @@ func (client *Client) initRelays() error {
 			if enableUDP {
 				udpAddr, err := net.ResolveUDPAddr("udp", relay.Address)
 				if err != nil {
-					return err
+					log.Println("error resolving udp addr:", err)
+					continue
 				}
 				conn, err := net.DialUDP("udp", nil, udpAddr)
 				if err != nil {
-					return err
+					log.Println("error dialing udp:", err)
+					continue
 				}
 				client.udpRelays = append(client.udpRelays, conn)
 				log.Println("connected to udp relay", relay.Address)
 			}
 		}
 	}
-	return nil
 }

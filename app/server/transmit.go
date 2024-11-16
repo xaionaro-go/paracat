@@ -7,7 +7,7 @@ import (
 	"github.com/chenx-dust/paracat/packet"
 )
 
-func (server *Server) forward(buf []byte, connID uint16) {
+func (server *Server) sendForward(buf []byte, connID uint16) {
 	server.forwardMutex.RLock()
 	conn, ok := server.forwardConns[connID]
 	server.forwardMutex.RUnlock()

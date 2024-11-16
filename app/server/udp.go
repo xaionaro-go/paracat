@@ -14,6 +14,12 @@ func (server *Server) handleUDP() {
 			log.Fatalln("error reading packet:", err)
 		}
 
+		connID, packetID, data, err := packet.Unpack(buf[:n])
+		if err != nil {
+			log.Println("error unpacking packet:", err)
+			continue
+		}
+
 		server.sourceMutex.RLock()
 		_, ok := server.sourceUDPAddrs[udpAddr.String()]
 		server.sourceMutex.RUnlock()
@@ -23,19 +29,11 @@ func (server *Server) handleUDP() {
 			server.sourceMutex.Unlock()
 		}
 
-		connID, packetID, data, err := packet.Unpack(buf[:n])
-		if err != nil {
-			log.Println("error unpacking packet:", err)
-			continue
-		}
-
 		isDuplicate := server.packetFilter.CheckDuplicatePacketID(packetID)
 		if isDuplicate {
 			continue
 		}
 
-		go func() {
-			server.forward(data, connID)
-		}()
+		go server.sendForward(data, connID)
 	}
 }
