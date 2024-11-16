@@ -63,8 +63,10 @@ func (server *Server) Run() error {
 	go server.filterChan.Start()
 	switch server.cfg.DispatchType {
 	case config.RoundRobinDispatchType:
+		log.Println("using round robin dispatch")
 		go server.dispatcher.StartRoundRobin()
 	case config.ConcurrentDispatchType:
+		log.Println("using concurrent dispatch")
 		go server.dispatcher.StartConcurrent()
 	default:
 		log.Println("unknown dispatch type, using concurrent")
@@ -91,9 +93,9 @@ func (server *Server) Run() error {
 			defer ticker.Stop()
 			for range ticker.C {
 				pkg, band := server.dispatcher.Statistic.GetAndReset()
-				log.Printf("dispatcher recv: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, server.cfg.ReportInterval, float64(band)/server.cfg.ReportInterval.Seconds())
+				log.Printf("dispatcher: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, server.cfg.ReportInterval, float64(band)/server.cfg.ReportInterval.Seconds())
 				pkg, band = server.filterChan.Statistic.GetAndReset()
-				log.Printf("filter recv: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, server.cfg.ReportInterval, float64(band)/server.cfg.ReportInterval.Seconds())
+				log.Printf("filter: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, server.cfg.ReportInterval, float64(band)/server.cfg.ReportInterval.Seconds())
 			}
 		}()
 	}

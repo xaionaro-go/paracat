@@ -65,6 +65,7 @@ func (server *Server) handleUDPAddr(addr *net.UDPAddr) {
 	if ok {
 		ctx.timer.Reset(server.cfg.UDPTimeout)
 	} else {
+		log.Println("new udp connection from", addr.String())
 		newCtx := server.newUDPConnContext(addr)
 		server.sourceMutex.Lock()
 		server.sourceUDPAddrs[addr.String()] = newCtx

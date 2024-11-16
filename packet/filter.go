@@ -7,17 +7,17 @@ import (
 
 type PacketFilter struct {
 	packetMutex     sync.Mutex
-	packetLowMap    map[uint16]struct{}
+	packetLowMap    [0x8000]bool
 	packetLowClear  bool
-	packetHighMap   map[uint16]struct{}
+	packetHighMap   [0x8000]bool
 	packetHighClear bool
 }
 
 func NewPacketFilter() *PacketFilter {
 	return &PacketFilter{
-		packetLowMap:    make(map[uint16]struct{}),
-		packetHighMap:   make(map[uint16]struct{}),
+		packetLowMap:    [0x8000]bool{},
 		packetLowClear:  true,
+		packetHighMap:   [0x8000]bool{},
 		packetHighClear: true,
 	}
 }
@@ -34,23 +34,23 @@ func (pf *PacketFilter) CheckDuplicatePacketID(id uint16) bool {
 	pf.packetMutex.Lock()
 	defer pf.packetMutex.Unlock()
 	if id < 0x8000 {
-		_, ok = pf.packetLowMap[id]
+		ok = pf.packetLowMap[id]
 		if !ok {
-			pf.packetLowMap[id] = struct{}{}
+			pf.packetLowMap[id] = true
 		}
 		pf.packetLowClear = false
 		if id > 0x3FFF && !pf.packetHighClear {
-			pf.packetHighMap = make(map[uint16]struct{})
+			pf.packetHighMap = [0x8000]bool{}
 			pf.packetHighClear = true
 		}
 	} else {
-		_, ok = pf.packetHighMap[id]
+		ok = pf.packetHighMap[id-0x8000]
 		if !ok {
-			pf.packetHighMap[id] = struct{}{}
+			pf.packetHighMap[id-0x8000] = true
 		}
 		pf.packetHighClear = false
 		if id < 0xC000 && !pf.packetLowClear {
-			pf.packetLowMap = make(map[uint16]struct{})
+			pf.packetLowMap = [0x8000]bool{}
 			pf.packetLowClear = true
 		}
 	}

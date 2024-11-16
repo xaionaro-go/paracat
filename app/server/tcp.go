@@ -40,6 +40,7 @@ func (server *Server) handleTCP() {
 }
 
 func (server *Server) handleTCPConn(conn *net.TCPConn) {
+	log.Println("new tcp connection from", conn.RemoteAddr().String())
 	ctx := server.newTCPConnContext(conn)
 	go server.handleTCPConnRecv(ctx)
 	go server.handleTCPConnSend(ctx)

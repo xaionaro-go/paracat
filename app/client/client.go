@@ -47,6 +47,7 @@ func (client *Client) Run() error {
 	if err != nil {
 		return err
 	}
+
 	log.Println("listening on", client.cfg.ListenAddr)
 
 	client.dialRelays()
@@ -54,8 +55,10 @@ func (client *Client) Run() error {
 	go client.filterChan.Start()
 	switch client.cfg.DispatchType {
 	case config.RoundRobinDispatchType:
+		log.Println("using round robin dispatch")
 		go client.dispatcher.StartRoundRobin()
 	case config.ConcurrentDispatchType:
+		log.Println("using concurrent dispatch")
 		go client.dispatcher.StartConcurrent()
 	default:
 		log.Println("unknown dispatch type, using concurrent")
@@ -79,9 +82,9 @@ func (client *Client) Run() error {
 			defer ticker.Stop()
 			for range ticker.C {
 				pkg, band := client.dispatcher.Statistic.GetAndReset()
-				log.Printf("dispatcher recv: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
+				log.Printf("dispatcher: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
 				pkg, band = client.filterChan.Statistic.GetAndReset()
-				log.Printf("filter recv: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
+				log.Printf("filter: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
 			}
 		}()
 	}

@@ -3,6 +3,7 @@ package channel
 
 import (
 	"errors"
+	"log"
 	"sync"
 
 	"github.com/chenx-dust/paracat/packet"
@@ -57,16 +58,19 @@ func (d *Dispatcher) StartRoundRobin() {
 		go func(newData []byte) {
 			d.Statistic.CountPacket(uint32(len(newData)))
 			d.chanMutex.RLock()
-			nowIdx := d.roundRobinIdx % len(d.outChan)
-			for i := 0; i < len(d.outChan); i++ {
+			i := 0
+			for ; i < len(d.outChan); i++ {
+				nowIdx := (d.roundRobinIdx + i) % len(d.outChan)
 				select {
 				case d.outChan[nowIdx] <- newData:
 					return
 				default:
-					nowIdx = (nowIdx + 1) % len(d.outChan)
 				}
 			}
-			d.roundRobinIdx = (nowIdx + 1) % len(d.outChan)
+			if i == len(d.outChan) {
+				log.Println("dispatcher channel is full, drop packet")
+			}
+			d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outChan)
 			d.chanMutex.RUnlock()
 		}(newData)
 	}
