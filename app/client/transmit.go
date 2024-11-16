@@ -13,61 +13,47 @@ func (client *Client) handleForward() {
 		if err != nil {
 			log.Fatalln("error reading from udp conn:", err)
 		}
-		client.packetStat.ForwardRecv.CountPacket(uint32(n))
-		go func() {
-			connID, ok := client.connAddrIDMap[addr.String()]
-			if !ok {
-				connID = uint16(client.connIncrement.Add(1) - 1)
-				client.connMutex.Lock()
-				client.connIDAddrMap[connID] = addr
-				client.connAddrIDMap[addr.String()] = connID
-				client.connMutex.Unlock()
-			}
-			packetID := client.packetFilter.NewPacketID()
 
-			for _, relay := range client.tcpRelays {
-				go func() {
-					n1, err := packet.WritePacket(relay, buf[:n], connID, packetID)
-					if err != nil {
-						log.Println("error writing to tcp:", err)
-					}
-					if n1 != n {
-						log.Println("error writing to tcp: wrote", n1, "bytes instead of", n)
-					}
-					client.packetStat.ForwardSend.CountPacket(uint32(n1))
-				}()
-			}
-			udpPacked := packet.Pack(buf[:n], connID, packetID)
-			for _, relay := range client.udpRelays {
-				go func() {
-					n, err := relay.Write(udpPacked)
-					if err != nil {
-						log.Println("error writing to udp:", err)
-					}
-					if n != len(udpPacked) {
-						log.Println("error writing to udp: wrote", n, "bytes instead of", len(udpPacked))
-					}
-					client.packetStat.ForwardSend.CountPacket(uint32(n))
-				}()
-			}
-		}()
+		connID, ok := client.connAddrIDMap[addr.String()]
+		if !ok {
+			connID = uint16(client.connIncrement.Add(1) - 1)
+			client.connMutex.Lock()
+			client.connIDAddrMap[connID] = addr
+			client.connAddrIDMap[addr.String()] = connID
+			client.connMutex.Unlock()
+		}
+		packetID := packet.NewPacketID(&client.idIncrement)
+
+		newPacket := &packet.Packet{
+			Buffer:   buf[:n],
+			ConnID:   connID,
+			PacketID: packetID,
+		}
+		packed := newPacket.Pack()
+
+		select {
+		case client.dispatcher.InChan() <- packed:
+		default:
+			log.Println("dispatcher channel is full, drop packet")
+		}
 	}
 }
 
-func (client *Client) sendReverse(buf []byte, length int, connID uint16) {
-	client.connMutex.RLock()
-	udpAddr, ok := client.connIDAddrMap[connID]
-	client.connMutex.RUnlock()
-	if !ok {
-		log.Println("conn not found")
-		return
+func (client *Client) handleReverse() {
+	for newPacket := range client.filterChan.OutChan() {
+		client.connMutex.RLock()
+		udpAddr, ok := client.connIDAddrMap[newPacket.ConnID]
+		client.connMutex.RUnlock()
+		if !ok {
+			log.Println("conn not found")
+			return
+		}
+		n, err := client.udpListener.WriteToUDP(newPacket.Buffer, udpAddr)
+		if err != nil {
+			log.Println("error writing to udp:", err)
+		}
+		if n != len(newPacket.Buffer) {
+			log.Println("error writing to udp: wrote", n, "bytes instead of", len(newPacket.Buffer))
+		}
 	}
-	n, err := client.udpListener.WriteToUDP(buf[:length], udpAddr)
-	if err != nil {
-		log.Println("error writing to udp:", err)
-	}
-	if n != length {
-		log.Println("error writing to udp: wrote", n, "bytes instead of", length)
-	}
-	client.packetStat.ReverseSend.CountPacket(uint32(n))
 }

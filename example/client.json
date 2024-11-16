@@ -5,5 +5,8 @@
         {"addr": "127.0.0.1:9001", "conn_type": "tcp"},
         {"addr": "127.0.0.1:9001", "conn_type": "udp"}
     ],
-    "report_interval": "10s"
+    "report_interval": "10s",
+    "dispatch_type": "concurrent",
+    "udp_timeout": "10m",
+    "channel_size": 1024
 }

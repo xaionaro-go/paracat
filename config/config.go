@@ -4,11 +4,12 @@ import "time"
 
 type AppMode int
 type ConnectionType int
+type DispatchType int
 
 const (
 	NotDefined AppMode = iota
 	ClientMode
-	RelayMode // optional for udp-to-tcp or tcp-to-udp
+	RelayMode // for udp-to-tcp or tcp-to-udp
 	ServerMode
 )
 
@@ -19,6 +20,12 @@ const (
 	BothConnectionType
 )
 
+const (
+	NotDefinedDispatchType DispatchType = iota
+	RoundRobinDispatchType
+	ConcurrentDispatchType
+)
+
 type Config struct {
 	Mode           AppMode
 	ListenAddr     string
@@ -27,6 +34,11 @@ type Config struct {
 	RelayType      RelayType     // only used in RelayMode
 	BufferSize     int
 	ReportInterval time.Duration
+	ReconnectTimes int           // only used in ClientMode
+	ReconnectDelay time.Duration // only used in ClientMode
+	UDPTimeout     time.Duration // only used in ServerMode
+	DispatchType   DispatchType
+	ChannelSize    int
 }
 
 type RelayServer struct {
@@ -48,6 +60,17 @@ func ConnTypeToString(connType ConnectionType) string {
 		return "udp"
 	case BothConnectionType:
 		return "both"
+	default:
+		return "unknown"
+	}
+}
+
+func DispatchTypeToString(dispatchType DispatchType) string {
+	switch dispatchType {
+	case RoundRobinDispatchType:
+		return "round-robin"
+	case ConcurrentDispatchType:
+		return "concurrent"
 	default:
 		return "unknown"
 	}

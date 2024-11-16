@@ -14,19 +14,20 @@ flowchart LR
     Rn(Relay Server #n)
     S(UDP Server)
 
-    C --> IN
+    C -->|UDP| IN
 
     IN -->|Raw TCP| R0
     IN -->|Raw UDP| R0
     IN -->|SOCKS5| R1
     IN -->|Others| Rn
+    IN -->|Raw TCP| OUT
     IN -->|Raw UDP| OUT
 
     R0 --> OUT
     R1 --> OUT
     Rn --> OUT
 
-    OUT --> S
+    OUT -->|UDP| S
 ```
 
 ## TODO

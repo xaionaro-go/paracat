@@ -16,6 +16,11 @@ type JSONConfig struct {
 	RelayType      *JSONRelayType    `json:"relay_type,omitempty"`
 	BufferSize     *int              `json:"buffer_size,omitempty"`
 	ReportInterval *string           `json:"report_interval,omitempty"`
+	ReconnectTimes *int              `json:"reconnect_times,omitempty"`
+	ReconnectDelay *string           `json:"reconnect_delay,omitempty"`
+	UDPTimeout     *string           `json:"udp_timeout,omitempty"`
+	DispatchType   *string           `json:"dispatch_type,omitempty"`
+	ChannelSize    *int              `json:"channel_size,omitempty"`
 }
 
 type JSONRelayServer struct {
@@ -32,6 +37,10 @@ type JSONRelayType struct {
 const defaultWeight = 1
 const defaultBufferSize = 1500
 const defaultReportInterval = 0 * time.Second
+const defaultReconnectTimes = 3
+const defaultReconnectDelay = 1 * time.Second
+const defaultChannelSize = 1024
+const defaultUDPTimeout = 10 * time.Minute
 
 // LoadFromFile reads and parses a JSON configuration file
 func LoadFromFile(filepath string) (*Config, error) {
@@ -77,6 +86,34 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		reportInterval = d
 	}
 
+	reconnectTimes := defaultReconnectTimes
+	if jc.ReconnectTimes != nil {
+		reconnectTimes = *jc.ReconnectTimes
+	}
+
+	reconnectDelay := defaultReconnectDelay
+	if jc.ReconnectDelay != nil {
+		d, err := time.ParseDuration(*jc.ReconnectDelay)
+		if err != nil {
+			return nil, fmt.Errorf("invalid reconnect delay: %w", err)
+		}
+		reconnectDelay = d
+	}
+
+	channelSize := defaultChannelSize
+	if jc.ChannelSize != nil {
+		channelSize = *jc.ChannelSize
+	}
+
+	udpTimeout := defaultUDPTimeout
+	if jc.UDPTimeout != nil {
+		d, err := time.ParseDuration(*jc.UDPTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid udp timeout: %w", err)
+		}
+		udpTimeout = d
+	}
+
 	config := &Config{
 		Mode:           mode,
 		ListenAddr:     jc.ListenAddr,
@@ -84,6 +121,11 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		RelayServers:   convertJSONRelayServers(jc.RelayServers),
 		BufferSize:     bufferSize,
 		ReportInterval: reportInterval,
+		ReconnectTimes: reconnectTimes,
+		ReconnectDelay: reconnectDelay,
+		DispatchType:   convertJSONDispatchType(jc.DispatchType),
+		ChannelSize:    channelSize,
+		UDPTimeout:     udpTimeout,
 	}
 
 	if jc.RelayType != nil {
@@ -126,5 +168,19 @@ func convertJSONConnectionType(connType string) ConnectionType {
 		return BothConnectionType
 	default:
 		return NotDefinedConnectionType
+	}
+}
+
+func convertJSONDispatchType(dispatchType *string) DispatchType {
+	if dispatchType == nil {
+		return NotDefinedDispatchType
+	}
+	switch *dispatchType {
+	case "round-robin":
+		return RoundRobinDispatchType
+	case "concurrent":
+		return ConcurrentDispatchType
+	default:
+		return NotDefinedDispatchType
 	}
 }

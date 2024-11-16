@@ -6,7 +6,6 @@ import (
 )
 
 type PacketFilter struct {
-	packetIncrement atomic.Uint32
 	packetMutex     sync.Mutex
 	packetLowMap    map[uint16]struct{}
 	packetLowClear  bool
@@ -14,7 +13,7 @@ type PacketFilter struct {
 	packetHighClear bool
 }
 
-func NewPacketManager() *PacketFilter {
+func NewPacketFilter() *PacketFilter {
 	return &PacketFilter{
 		packetLowMap:    make(map[uint16]struct{}),
 		packetHighMap:   make(map[uint16]struct{}),
@@ -23,11 +22,7 @@ func NewPacketManager() *PacketFilter {
 	}
 }
 
-func (pm *PacketFilter) NewPacketID() uint16 {
-	return uint16(pm.packetIncrement.Add(1) - 1)
-}
-
-func (pm *PacketFilter) CheckDuplicatePacketID(id uint16) bool {
+func (pf *PacketFilter) CheckDuplicatePacketID(id uint16) bool {
 	/*
 		divide packet id into four partitions:
 		0x0000 ~ 0x3FFF: low map, allowing high map packet input
@@ -36,28 +31,32 @@ func (pm *PacketFilter) CheckDuplicatePacketID(id uint16) bool {
 		0xC000 ~ 0xFFFF: high map, clearing low map
 	*/
 	var ok bool
-	pm.packetMutex.Lock()
-	defer pm.packetMutex.Unlock()
+	pf.packetMutex.Lock()
+	defer pf.packetMutex.Unlock()
 	if id < 0x8000 {
-		_, ok = pm.packetLowMap[id]
+		_, ok = pf.packetLowMap[id]
 		if !ok {
-			pm.packetLowMap[id] = struct{}{}
+			pf.packetLowMap[id] = struct{}{}
 		}
-		pm.packetLowClear = false
-		if id > 0x3FFF && !pm.packetHighClear {
-			pm.packetHighMap = make(map[uint16]struct{})
-			pm.packetHighClear = true
+		pf.packetLowClear = false
+		if id > 0x3FFF && !pf.packetHighClear {
+			pf.packetHighMap = make(map[uint16]struct{})
+			pf.packetHighClear = true
 		}
 	} else {
-		_, ok = pm.packetHighMap[id]
+		_, ok = pf.packetHighMap[id]
 		if !ok {
-			pm.packetHighMap[id] = struct{}{}
+			pf.packetHighMap[id] = struct{}{}
 		}
-		pm.packetHighClear = false
-		if id < 0xC000 && !pm.packetLowClear {
-			pm.packetLowMap = make(map[uint16]struct{})
-			pm.packetLowClear = true
+		pf.packetHighClear = false
+		if id < 0xC000 && !pf.packetLowClear {
+			pf.packetLowMap = make(map[uint16]struct{})
+			pf.packetLowClear = true
 		}
 	}
 	return ok
+}
+
+func NewPacketID(idIncrement *atomic.Uint32) uint16 {
+	return uint16(idIncrement.Add(1) - 1)
 }
