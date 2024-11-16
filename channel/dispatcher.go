@@ -3,91 +3,70 @@ package channel
 
 import (
 	"errors"
-	"log"
+	"io"
 	"sync"
 
+	"github.com/chenx-dust/paracat/config"
 	"github.com/chenx-dust/paracat/packet"
 )
 
 type Dispatcher struct {
-	chanMutex     sync.RWMutex
-	inChan        chan []byte
-	outChan       []chan []byte
+	connMutex     sync.RWMutex
+	outConns      []io.Writer
 	roundRobinIdx int
+	mode          config.DispatchType
 
-	Statistic *packet.PacketStatistic
+	StatisticIn  *packet.PacketStatistic
+	StatisticOut *packet.PacketStatistic
 }
 
-func NewDispatcher(channelSize int) *Dispatcher {
+func NewDispatcher(mode config.DispatchType) *Dispatcher {
 	return &Dispatcher{
-		inChan:        make(chan []byte, channelSize),
-		outChan:       make([]chan []byte, 0, channelSize),
+		outConns:      make([]io.Writer, 0),
 		roundRobinIdx: 0,
-		Statistic:     packet.NewPacketStatistic(),
+		mode:          mode,
+		StatisticIn:   packet.NewPacketStatistic(),
+		StatisticOut:  packet.NewPacketStatistic(),
 	}
 }
 
-func (d *Dispatcher) InChan() chan<- []byte {
-	return d.inChan
+func (d *Dispatcher) NewOutput(conn io.Writer) {
+	d.connMutex.Lock()
+	defer d.connMutex.Unlock()
+	d.outConns = append(d.outConns, conn)
 }
 
-func (d *Dispatcher) NewOutChan() <-chan []byte {
-	d.chanMutex.Lock()
-	defer d.chanMutex.Unlock()
-	newChan := make(chan []byte)
-	d.outChan = append(d.outChan, newChan)
-	return newChan
-}
-
-func (d *Dispatcher) CloseOutChan(c <-chan []byte) error {
-	d.chanMutex.Lock()
-	defer d.chanMutex.Unlock()
-	for i := 0; i < len(d.outChan); i++ {
-		if d.outChan[i] == c {
-			close(d.outChan[i])
-			d.outChan[i] = d.outChan[len(d.outChan)-1]
-			d.outChan = d.outChan[:len(d.outChan)-1]
+func (d *Dispatcher) RemoveOutput(conn io.Writer) error {
+	d.connMutex.Lock()
+	defer d.connMutex.Unlock()
+	for i := 0; i < len(d.outConns); i++ {
+		if d.outConns[i] == conn {
+			d.outConns[i] = d.outConns[len(d.outConns)-1]
+			d.outConns = d.outConns[:len(d.outConns)-1]
 			return nil
 		}
 	}
 	return errors.New("channel not found")
 }
 
-func (d *Dispatcher) StartRoundRobin() {
-	for newData := range d.inChan {
-		go func(newData []byte) {
-			d.Statistic.CountPacket(uint32(len(newData)))
-			d.chanMutex.RLock()
-			i := 0
-			for ; i < len(d.outChan); i++ {
-				nowIdx := (d.roundRobinIdx + i) % len(d.outChan)
-				select {
-				case d.outChan[nowIdx] <- newData:
-					return
-				default:
-				}
+func (d *Dispatcher) Dispatch(data []byte) {
+	d.connMutex.RLock()
+	defer d.connMutex.RUnlock()
+	switch d.mode {
+	case config.RoundRobinDispatchType:
+		d.StatisticIn.CountPacket(uint32(len(data)))
+		d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outConns)
+		n, err := d.outConns[d.roundRobinIdx].Write(data)
+		if err != nil {
+			d.StatisticOut.CountPacket(uint32(n))
+		}
+	case config.ConcurrentDispatchType:
+		d.StatisticIn.CountPacket(uint32(len(data)))
+		for _, outConn := range d.outConns {
+			n, err := outConn.Write(data)
+			if err != nil {
+				d.StatisticOut.CountPacket(uint32(n))
 			}
-			if i == len(d.outChan) {
-				log.Println("dispatcher channel is full, drop packet")
-			}
-			d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outChan)
-			d.chanMutex.RUnlock()
-		}(newData)
-	}
-}
-
-func (d *Dispatcher) StartConcurrent() {
-	for newData := range d.inChan {
-		go func(newData []byte) {
-			d.Statistic.CountPacket(uint32(len(newData)))
-			d.chanMutex.RLock()
-			for _, outChan := range d.outChan {
-				select {
-				case outChan <- newData:
-				default:
-				}
-			}
-			d.chanMutex.RUnlock()
-		}(newData)
+		}
 	}
 }

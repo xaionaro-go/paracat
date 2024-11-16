@@ -9,16 +9,15 @@ import (
 )
 
 type tcpConnContext struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	conn     *net.TCPConn
-	sendChan <-chan []byte
+	ctx    context.Context
+	cancel context.CancelFunc
+	conn   *net.TCPConn
 }
 
 func (server *Server) newTCPConnContext(conn *net.TCPConn) *tcpConnContext {
 	ctx, cancel := context.WithCancel(context.Background())
-	sendChan := server.dispatcher.NewOutChan()
-	newCtx := &tcpConnContext{ctx, cancel, conn, sendChan}
+	server.dispatcher.NewOutput(conn)
+	newCtx := &tcpConnContext{ctx, cancel, conn}
 	go server.handleTCPConnContextCancel(newCtx)
 	return newCtx
 }
@@ -26,7 +25,7 @@ func (server *Server) newTCPConnContext(conn *net.TCPConn) *tcpConnContext {
 func (server *Server) handleTCPConnContextCancel(ctx *tcpConnContext) {
 	<-ctx.ctx.Done()
 	ctx.conn.Close()
-	server.dispatcher.CloseOutChan(ctx.sendChan)
+	server.dispatcher.RemoveOutput(ctx.conn)
 }
 
 func (server *Server) handleTCP() {
@@ -43,7 +42,6 @@ func (server *Server) handleTCPConn(conn *net.TCPConn) {
 	log.Println("new tcp connection from", conn.RemoteAddr().String())
 	ctx := server.newTCPConnContext(conn)
 	go server.handleTCPConnRecv(ctx)
-	go server.handleTCPConnSend(ctx)
 }
 
 func (server *Server) handleTCPConnRecv(ctx *tcpConnContext) {
@@ -61,31 +59,17 @@ func (server *Server) handleTCPConnRecv(ctx *tcpConnContext) {
 			return
 		}
 
-		select {
-		case server.filterChan.InChan() <- newPacket:
-		default:
-			log.Println("filter channel is full, drop packet")
-		}
+		server.filterChan.Forward(newPacket)
 	}
 }
 
-func (server *Server) handleTCPConnSend(ctx *tcpConnContext) {
-	defer ctx.cancel()
-	for {
-		select {
-		case packet := <-ctx.sendChan:
-			n, err := ctx.conn.Write(packet)
-			if err != nil {
-				log.Println("error writing packet:", err)
-				log.Println("stop handling connection to:", ctx.conn.RemoteAddr().String())
-				return
-			}
-			if n != len(packet) {
-				log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-				continue
-			}
-		case <-ctx.ctx.Done():
-			return
-		}
+func (ctx *tcpConnContext) Write(packet []byte) (n int, err error) {
+	n, err = ctx.conn.Write(packet)
+	if err != nil {
+		log.Println("error writing packet:", err)
+		log.Println("stop handling connection to:", ctx.conn.RemoteAddr().String())
+	} else if n != len(packet) {
+		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
 	}
+	return
 }

@@ -10,11 +10,10 @@ import (
 )
 
 type udpRelay struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	addr     *net.UDPAddr
-	conn     *net.UDPConn
-	sendChan <-chan []byte
+	ctx    context.Context
+	cancel context.CancelFunc
+	addr   *net.UDPAddr
+	conn   *net.UDPConn
 }
 
 func (client *Client) newUDPRelay(addr *net.UDPAddr) (relay *udpRelay, err error) {
@@ -29,14 +28,13 @@ func (client *Client) connectUDPRelay(relay *udpRelay) error {
 		relay.conn, err = net.DialUDP("udp", nil, relay.addr)
 		if err != nil {
 			log.Println("error dialing udp:", err, "retry:", retry)
-			time.Sleep(client.cfg.ReconnectDelay * time.Second)
+			time.Sleep(client.cfg.ReconnectDelay)
 			continue
 		}
 		relay.ctx, relay.cancel = context.WithCancel(context.Background())
-		relay.sendChan = client.dispatcher.NewOutChan()
+		client.dispatcher.NewOutput(relay)
 		go client.handleUDPRelayCancel(relay)
 		go client.handleUDPRelayRecv(relay)
-		go client.handleUDPRelaySend(relay)
 		return nil
 	}
 	return err
@@ -45,7 +43,7 @@ func (client *Client) connectUDPRelay(relay *udpRelay) error {
 func (client *Client) handleUDPRelayCancel(relay *udpRelay) {
 	<-relay.ctx.Done()
 	relay.conn.Close()
-	client.dispatcher.CloseOutChan(relay.sendChan)
+	client.dispatcher.RemoveOutput(relay)
 	err := client.connectUDPRelay(relay)
 	if err != nil {
 		log.Println("failed to reconnect udp relay:", err)
@@ -74,31 +72,17 @@ func (client *Client) handleUDPRelayRecv(relay *udpRelay) {
 			continue
 		}
 
-		select {
-		case client.filterChan.InChan() <- newPacket:
-		default:
-			log.Println("filter channel is full, drop packet")
-		}
+		client.filterChan.Forward(newPacket)
 	}
 }
 
-func (client *Client) handleUDPRelaySend(relay *udpRelay) {
-	defer relay.cancel()
-	for {
-		select {
-		case packet := <-relay.sendChan:
-			n, err := relay.conn.Write(packet)
-			if err != nil {
-				log.Println("error writing packet:", err)
-				log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
-				return
-			}
-			if n != len(packet) {
-				log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-				continue
-			}
-		case <-relay.ctx.Done():
-			return
-		}
+func (relay *udpRelay) Write(packet []byte) (n int, err error) {
+	n, err = relay.conn.Write(packet)
+	if err != nil {
+		log.Println("error writing packet:", err)
+		relay.cancel()
+	} else if n != len(packet) {
+		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
 	}
+	return
 }

@@ -29,8 +29,8 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	return &Client{
 		cfg:           cfg,
-		filterChan:    channel.NewFilterChannel(cfg.ChannelSize),
-		dispatcher:    channel.NewDispatcher(cfg.ChannelSize),
+		filterChan:    channel.NewFilterChannel(),
+		dispatcher:    channel.NewDispatcher(cfg.DispatchType),
 		connIDAddrMap: make(map[uint16]*net.UDPAddr),
 		connAddrIDMap: make(map[string]uint16),
 	}
@@ -50,30 +50,15 @@ func (client *Client) Run() error {
 
 	log.Println("listening on", client.cfg.ListenAddr)
 
+	client.filterChan.SetOutCallback(client.handleReverse)
+
 	client.dialRelays()
 
-	go client.filterChan.Start()
-	switch client.cfg.DispatchType {
-	case config.RoundRobinDispatchType:
-		log.Println("using round robin dispatch")
-		go client.dispatcher.StartRoundRobin()
-	case config.ConcurrentDispatchType:
-		log.Println("using concurrent dispatch")
-		go client.dispatcher.StartConcurrent()
-	default:
-		log.Println("unknown dispatch type, using concurrent")
-		go client.dispatcher.StartConcurrent()
-	}
-
 	wg := sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		client.handleForward()
-	}()
-	go func() {
-		defer wg.Done()
-		client.handleReverse()
 	}()
 
 	if client.cfg.ReportInterval > 0 {
@@ -81,10 +66,14 @@ func (client *Client) Run() error {
 			ticker := time.NewTicker(client.cfg.ReportInterval)
 			defer ticker.Stop()
 			for range ticker.C {
-				pkg, band := client.dispatcher.Statistic.GetAndReset()
-				log.Printf("dispatcher: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
-				pkg, band = client.filterChan.Statistic.GetAndReset()
-				log.Printf("filter: %d packets, %d bytes in %s, %.2f bytes/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds())
+				pkg, band := client.dispatcher.StatisticIn.GetAndReset()
+				log.Printf("dispatcher in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.dispatcher.StatisticOut.GetAndReset()
+				log.Printf("dispatcher out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.filterChan.StatisticIn.GetAndReset()
+				log.Printf("filter in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.filterChan.StatisticOut.GetAndReset()
+				log.Printf("filter out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
 			}
 		}()
 	}

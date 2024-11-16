@@ -10,17 +10,17 @@ import (
 )
 
 type udpConnContext struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	addr     *net.UDPAddr
-	sendChan <-chan []byte
-	timer    *time.Timer
+	ctx    context.Context
+	cancel context.CancelFunc
+	addr   *net.UDPAddr
+	timer  *time.Timer
+	dialer *net.UDPConn
 }
 
 func (server *Server) newUDPConnContext(addr *net.UDPAddr) *udpConnContext {
 	ctx, cancel := context.WithCancel(context.Background())
-	sendChan := server.dispatcher.NewOutChan()
-	newCtx := &udpConnContext{ctx, cancel, addr, sendChan, time.NewTimer(server.cfg.UDPTimeout)}
+	newCtx := &udpConnContext{ctx, cancel, addr, time.NewTimer(server.cfg.UDPTimeout), server.udpListener}
+	server.dispatcher.NewOutput(newCtx)
 	go server.handleUDPConnContextCancel(newCtx)
 	return newCtx
 }
@@ -28,7 +28,7 @@ func (server *Server) newUDPConnContext(addr *net.UDPAddr) *udpConnContext {
 func (server *Server) handleUDPConnContextCancel(ctx *udpConnContext) {
 	<-ctx.ctx.Done()
 	ctx.timer.Stop()
-	server.dispatcher.CloseOutChan(ctx.sendChan)
+	server.dispatcher.RemoveOutput(ctx)
 	server.sourceMutex.Lock()
 	delete(server.sourceUDPAddrs, ctx.addr.String())
 	server.sourceMutex.Unlock()
@@ -50,11 +50,7 @@ func (server *Server) handleUDP() {
 
 		server.handleUDPAddr(udpAddr)
 
-		select {
-		case server.filterChan.InChan() <- newPacket:
-		default:
-			log.Println("filter channel is full, drop packet")
-		}
+		server.filterChan.Forward(newPacket)
 	}
 }
 
@@ -70,29 +66,7 @@ func (server *Server) handleUDPAddr(addr *net.UDPAddr) {
 		server.sourceMutex.Lock()
 		server.sourceUDPAddrs[addr.String()] = newCtx
 		server.sourceMutex.Unlock()
-		go server.handleUDPConnSend(newCtx)
 		go server.handleUDPConnTimeout(newCtx)
-	}
-}
-
-func (server *Server) handleUDPConnSend(ctx *udpConnContext) {
-	defer ctx.cancel()
-	for {
-		select {
-		case packet := <-ctx.sendChan:
-			n, err := server.udpListener.WriteToUDP(packet, ctx.addr)
-			if err != nil {
-				log.Println("error writing packet:", err)
-				log.Println("stop sending to:", ctx.addr.String())
-				return
-			}
-			if n != len(packet) {
-				log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-				continue
-			}
-		case <-ctx.ctx.Done():
-			return
-		}
 	}
 }
 
@@ -103,4 +77,14 @@ func (server *Server) handleUDPConnTimeout(ctx *udpConnContext) {
 	case <-ctx.ctx.Done():
 		return
 	}
+}
+
+func (ctx *udpConnContext) Write(packet []byte) (n int, err error) {
+	n, err = ctx.dialer.WriteToUDP(packet, ctx.addr)
+	if err != nil {
+		log.Println("error writing packet:", err)
+	} else if n != len(packet) {
+		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
+	}
+	return
 }

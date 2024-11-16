@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"log"
 
 	"github.com/chenx-dust/paracat/packet"
@@ -21,6 +22,7 @@ func (client *Client) handleForward() {
 			client.connIDAddrMap[connID] = addr
 			client.connAddrIDMap[addr.String()] = connID
 			client.connMutex.Unlock()
+			log.Println("new connection from:", addr.String())
 		}
 		packetID := packet.NewPacketID(&client.idIncrement)
 
@@ -30,30 +32,23 @@ func (client *Client) handleForward() {
 			PacketID: packetID,
 		}
 		packed := newPacket.Pack()
-
-		select {
-		case client.dispatcher.InChan() <- packed:
-		default:
-			log.Println("dispatcher channel is full, drop packet")
-		}
+		client.dispatcher.Dispatch(packed)
 	}
 }
 
-func (client *Client) handleReverse() {
-	for newPacket := range client.filterChan.OutChan() {
-		client.connMutex.RLock()
-		udpAddr, ok := client.connIDAddrMap[newPacket.ConnID]
-		client.connMutex.RUnlock()
-		if !ok {
-			log.Println("conn not found")
-			return
-		}
-		n, err := client.udpListener.WriteToUDP(newPacket.Buffer, udpAddr)
-		if err != nil {
-			log.Println("error writing to udp:", err)
-		}
-		if n != len(newPacket.Buffer) {
-			log.Println("error writing to udp: wrote", n, "bytes instead of", len(newPacket.Buffer))
-		}
+func (client *Client) handleReverse(newPacket *packet.Packet) (n int, err error) {
+	client.connMutex.RLock()
+	udpAddr, ok := client.connIDAddrMap[newPacket.ConnID]
+	client.connMutex.RUnlock()
+	if !ok {
+		log.Println("conn not found")
+		return 0, errors.New("conn not found")
 	}
+	n, err = client.udpListener.WriteToUDP(newPacket.Buffer, udpAddr)
+	if err != nil {
+		log.Println("error writing to udp:", err)
+	} else if n != len(newPacket.Buffer) {
+		log.Println("error writing to udp: wrote", n, "bytes instead of", len(newPacket.Buffer))
+	}
+	return
 }

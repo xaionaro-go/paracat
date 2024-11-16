@@ -20,7 +20,7 @@ type JSONConfig struct {
 	ReconnectDelay *string           `json:"reconnect_delay,omitempty"`
 	UDPTimeout     *string           `json:"udp_timeout,omitempty"`
 	DispatchType   *string           `json:"dispatch_type,omitempty"`
-	ChannelSize    *int              `json:"channel_size,omitempty"`
+	MaxConcurrency *int              `json:"max_concurrency,omitempty"`
 }
 
 type JSONRelayServer struct {
@@ -38,8 +38,8 @@ const defaultWeight = 1
 const defaultBufferSize = 1500
 const defaultReportInterval = 0 * time.Second
 const defaultReconnectTimes = 3
-const defaultReconnectDelay = 1 * time.Second
-const defaultChannelSize = 1024
+const defaultReconnectDelay = 5 * time.Second
+const defaultMaxConcurrency = 65536
 const defaultUDPTimeout = 10 * time.Minute
 
 // LoadFromFile reads and parses a JSON configuration file
@@ -100,9 +100,9 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		reconnectDelay = d
 	}
 
-	channelSize := defaultChannelSize
-	if jc.ChannelSize != nil {
-		channelSize = *jc.ChannelSize
+	maxConcurrency := defaultMaxConcurrency
+	if jc.MaxConcurrency != nil {
+		maxConcurrency = *jc.MaxConcurrency
 	}
 
 	udpTimeout := defaultUDPTimeout
@@ -124,7 +124,7 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		ReconnectTimes: reconnectTimes,
 		ReconnectDelay: reconnectDelay,
 		DispatchType:   convertJSONDispatchType(jc.DispatchType),
-		ChannelSize:    channelSize,
+		MaxConcurrency: maxConcurrency,
 		UDPTimeout:     udpTimeout,
 	}
 

@@ -10,11 +10,10 @@ import (
 )
 
 type tcpRelay struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	addr     *net.TCPAddr
-	conn     *net.TCPConn
-	sendChan <-chan []byte
+	ctx    context.Context
+	cancel context.CancelFunc
+	addr   *net.TCPAddr
+	conn   *net.TCPConn
 }
 
 func (client *Client) newTCPRelay(addr *net.TCPAddr) (relay *tcpRelay, err error) {
@@ -29,14 +28,13 @@ func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 		relay.conn, err = net.DialTCP("tcp", nil, relay.addr)
 		if err != nil {
 			log.Println("error dialing tcp:", err, "retry:", retry)
-			time.Sleep(client.cfg.ReconnectDelay * time.Second)
+			time.Sleep(client.cfg.ReconnectDelay)
 			continue
 		}
 		relay.ctx, relay.cancel = context.WithCancel(context.Background())
-		relay.sendChan = client.dispatcher.NewOutChan()
+		client.dispatcher.NewOutput(relay)
 		go client.handleTCPRelayCancel(relay)
 		go client.handleTCPRelayRecv(relay)
-		go client.handleTCPRelaySend(relay)
 		return nil
 	}
 	return err
@@ -45,7 +43,7 @@ func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 func (client *Client) handleTCPRelayCancel(relay *tcpRelay) {
 	<-relay.ctx.Done()
 	relay.conn.Close()
-	client.dispatcher.CloseOutChan(relay.sendChan)
+	client.dispatcher.RemoveOutput(relay)
 	err := client.connectTCPRelay(relay)
 	if err != nil {
 		log.Println("failed to reconnect tcp relay:", err)
@@ -67,31 +65,17 @@ func (client *Client) handleTCPRelayRecv(ctx *tcpRelay) {
 			return
 		}
 
-		select {
-		case client.filterChan.InChan() <- packet:
-		default:
-			log.Println("filter channel is full, drop packet")
-		}
+		client.filterChan.Forward(packet)
 	}
 }
 
-func (client *Client) handleTCPRelaySend(ctx *tcpRelay) {
-	defer ctx.cancel()
-	for {
-		select {
-		case packet := <-ctx.sendChan:
-			n, err := ctx.conn.Write(packet)
-			if err != nil {
-				log.Println("error writing packet:", err)
-				log.Println("stop handling connection to:", ctx.conn.RemoteAddr().String())
-				return
-			}
-			if n != len(packet) {
-				log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-				continue
-			}
-		case <-ctx.ctx.Done():
-			return
-		}
+func (relay *tcpRelay) Write(packet []byte) (n int, err error) {
+	n, err = relay.conn.Write(packet)
+	if err != nil {
+		log.Println("error writing packet:", err)
+		log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
+	} else if n != len(packet) {
+		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
 	}
+	return
 }

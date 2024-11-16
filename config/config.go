@@ -38,7 +38,7 @@ type Config struct {
 	ReconnectDelay time.Duration // only used in ClientMode
 	UDPTimeout     time.Duration // only used in ServerMode
 	DispatchType   DispatchType
-	ChannelSize    int
+	MaxConcurrency int
 }
 
 type RelayServer struct {

@@ -6,36 +6,32 @@ import (
 )
 
 type FilterChannel struct {
-	inChan  chan *packet.Packet
-	outChan chan *packet.Packet
-	filter  *packet.PacketFilter
+	outCallback func(packet *packet.Packet) (int, error)
+	filter      *packet.PacketFilter
 
-	Statistic *packet.PacketStatistic
+	StatisticIn  *packet.PacketStatistic
+	StatisticOut *packet.PacketStatistic
 }
 
-func NewFilterChannel(channelSize int) *FilterChannel {
+func NewFilterChannel() *FilterChannel {
 	return &FilterChannel{
-		inChan:    make(chan *packet.Packet, channelSize),
-		outChan:   make(chan *packet.Packet, channelSize),
-		filter:    packet.NewPacketFilter(),
-		Statistic: packet.NewPacketStatistic(),
+		filter:       packet.NewPacketFilter(),
+		StatisticIn:  packet.NewPacketStatistic(),
+		StatisticOut: packet.NewPacketStatistic(),
 	}
 }
 
-func (ch *FilterChannel) InChan() chan<- *packet.Packet {
-	return ch.inChan
+func (ch *FilterChannel) SetOutCallback(outCallback func(packet *packet.Packet) (int, error)) {
+	ch.outCallback = outCallback
 }
 
-func (ch *FilterChannel) OutChan() <-chan *packet.Packet {
-	return ch.outChan
-}
-
-func (ch *FilterChannel) Start() {
-	for newPacket := range ch.inChan {
-		if ch.filter.CheckDuplicatePacketID(newPacket.PacketID) {
-			continue
-		}
-		ch.Statistic.CountPacket(uint32(len(newPacket.Buffer)))
-		ch.outChan <- newPacket
+func (ch *FilterChannel) Forward(newPacket *packet.Packet) {
+	ch.StatisticIn.CountPacket(uint32(len(newPacket.Buffer)))
+	if ch.filter.CheckDuplicatePacketID(newPacket.PacketID) {
+		return
+	}
+	n, err := ch.outCallback(newPacket)
+	if err != nil {
+		ch.StatisticOut.CountPacket(uint32(n))
 	}
 }
