@@ -2,18 +2,12 @@ package client
 
 import (
 	"log"
-	"net"
 
 	"github.com/chenx-dust/paracat/config"
 )
 
 func (client *Client) dialTCPRelay(addr string) error {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-	if err != nil {
-		log.Println("error resolving tcp addr:", err)
-		return err
-	}
-	_, err = client.newTCPRelay(tcpAddr)
+	_, err := client.newTCPRelay(addr)
 	if err != nil {
 		log.Println("error dialing tcp relay:", err)
 		return err
@@ -23,12 +17,7 @@ func (client *Client) dialTCPRelay(addr string) error {
 }
 
 func (client *Client) dialUDPRelay(addr string) error {
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		log.Println("error resolving udp addr:", err)
-		return err
-	}
-	_, err = client.newUDPRelay(udpAddr)
+	_, err := client.newUDPRelay(addr)
 	if err != nil {
 		log.Println("error dialing udp relay:", err)
 		return err

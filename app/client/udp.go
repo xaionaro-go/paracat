@@ -12,11 +12,11 @@ import (
 type udpRelay struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	addr   *net.UDPAddr
+	addr   string
 	conn   *net.UDPConn
 }
 
-func (client *Client) newUDPRelay(addr *net.UDPAddr) (relay *udpRelay, err error) {
+func (client *Client) newUDPRelay(addr string) (relay *udpRelay, err error) {
 	relay = &udpRelay{addr: addr}
 	err = client.connectUDPRelay(relay)
 	return
@@ -25,7 +25,13 @@ func (client *Client) newUDPRelay(addr *net.UDPAddr) (relay *udpRelay, err error
 func (client *Client) connectUDPRelay(relay *udpRelay) error {
 	var err error
 	for retry := 0; retry < client.cfg.ReconnectTimes; retry++ {
-		relay.conn, err = net.DialUDP("udp", nil, relay.addr)
+		udpAddr, err := net.ResolveUDPAddr("udp", relay.addr)
+		if err != nil {
+			log.Println("error resolving udp addr:", err)
+			time.Sleep(client.cfg.ReconnectDelay)
+			return err
+		}
+		relay.conn, err = net.DialUDP("udp", nil, udpAddr)
 		if err != nil {
 			log.Println("error dialing udp:", err, "retry:", retry)
 			time.Sleep(client.cfg.ReconnectDelay)

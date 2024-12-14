@@ -12,11 +12,11 @@ import (
 type tcpRelay struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	addr   *net.TCPAddr
+	addr   string
 	conn   *net.TCPConn
 }
 
-func (client *Client) newTCPRelay(addr *net.TCPAddr) (relay *tcpRelay, err error) {
+func (client *Client) newTCPRelay(addr string) (relay *tcpRelay, err error) {
 	relay = &tcpRelay{addr: addr}
 	err = client.connectTCPRelay(relay)
 	return
@@ -25,7 +25,13 @@ func (client *Client) newTCPRelay(addr *net.TCPAddr) (relay *tcpRelay, err error
 func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 	var err error
 	for retry := 0; retry < client.cfg.ReconnectTimes; retry++ {
-		relay.conn, err = net.DialTCP("tcp", nil, relay.addr)
+		tcpAddr, err := net.ResolveTCPAddr("tcp", relay.addr)
+		if err != nil {
+			log.Println("error resolving tcp addr:", err)
+			time.Sleep(client.cfg.ReconnectDelay)
+			return err
+		}
+		relay.conn, err = net.DialTCP("tcp", nil, tcpAddr)
 		if err != nil {
 			log.Println("error dialing tcp:", err, "retry:", retry)
 			time.Sleep(client.cfg.ReconnectDelay)
